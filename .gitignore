@@ -1,0 +1,13 @@
+.claude/
+.vscode
+build/
+*.o
+aishell
+/ast.dot
+/ast.png
+docs/pkg*.md
+tmp
+.env
+.env.*
+!.env.example
+aishell_mcp_*.json

@@ -1,0 +1,108 @@
+(* =========================================================================
+   AiShell grammar — Session 7
+   Written in Extended Backus-Naur Form (EBNF).
+
+   This grammar is implemented by a handwritten recursive-descent parser
+   in src/parser.c.  Each production below corresponds to a static function
+   in that file:
+
+     inputline        -> parse_input()
+     pipeline         -> parse_pipeline()
+     simple_command   -> parse_simple_command()
+     redirection_list -> parse_redirect_list()
+
+   The lexer (src/token.c :: tokenize_line) produces the terminal tokens
+   consumed by the parser.
+   ========================================================================= *)
+
+(* -------------------------------------------------------------------------
+   Top-level input line
+   ------------------------------------------------------------------------- *)
+
+inputline = assignment
+          | command , [ "&" ] ;
+
+(* A bare NAME=VALUE token is treated as an environment variable assignment.
+   It must be the only token on the line. *)
+assignment = NAME , "=" , VALUE ;
+
+(* -------------------------------------------------------------------------
+   Command: a pipeline with optional redirections
+   ------------------------------------------------------------------------- *)
+
+command = pipeline , redirection_list ;
+
+(* -------------------------------------------------------------------------
+   Pipeline: one or more simple commands joined by |
+   ------------------------------------------------------------------------- *)
+
+pipeline = simple_command , { "|" , simple_command } ;
+
+(* -------------------------------------------------------------------------
+   Simple command: a word followed by zero or more argument words
+   ------------------------------------------------------------------------- *)
+
+simple_command = WORD , { WORD } ;
+
+(* -------------------------------------------------------------------------
+   Redirection list: zero or more redirections (applied to the pipeline)
+   Input redirection applies to the first stage of the pipeline;
+   output/append redirection applies to the last stage.
+   ------------------------------------------------------------------------- *)
+
+redirection_list = { redirection } ;
+
+redirection = ">"  , WORD    (* stdout truncate *)
+            | ">>" , WORD    (* stdout append   *)
+            | "<"  , WORD ;  (* stdin           *)
+
+(* -------------------------------------------------------------------------
+   Terminals
+   ------------------------------------------------------------------------- *)
+
+(* WORD: any sequence of non-whitespace, non-operator characters.
+   Quoted strings (" or ') are collapsed by the lexer so their delimiters
+   are not visible to the parser.  $NAME and ${NAME} inside a WORD are
+   expanded by execute_ast() before the command is executed. *)
+WORD = ? any non-operator token produced by tokenize_line ? ;
+
+(* NAME: a valid shell identifier — letter or underscore, followed by
+   zero or more alphanumeric characters or underscores. *)
+NAME = ( letter | "_" ) , { letter | digit | "_" } ;
+
+(* VALUE: everything after the "=" in an assignment token. *)
+VALUE = ? the remainder of the assignment token after "=" ? ;
+
+letter = "A" | ... | "Z" | "a" | ... | "z" ;
+digit  = "0" | ... | "9" ;
+
+(* -------------------------------------------------------------------------
+   Operator tokens (produced by the lexer, consumed directly by the parser)
+   ------------------------------------------------------------------------- *)
+
+(* "|"  TOK_PIPE         — pipeline separator            *)
+(* ">"  TOK_REDIR_OUT    — stdout truncate redirect      *)
+(* ">>" TOK_REDIR_APPEND — stdout append redirect        *)
+(* "<"  TOK_REDIR_IN     — stdin redirect                *)
+(* "&"  TOK_BG           — background execution marker   *)
+
+(* -------------------------------------------------------------------------
+   Notes
+   -------------------------------------------------------------------------
+   1. Redirection operators bind to the enclosing command/pipeline, not
+      to a specific simple_command.  The executor (ast_to_segments) routes
+      "<" to the first pipeline stage and ">" / ">>" to the last.
+
+   2. "&" must appear at the very end of an inputline.  Any token after "&"
+      is a syntax error ("unexpected token after &").
+
+   3. An empty pipeline stage (e.g. "ls |" with nothing after "|") is a
+      syntax error ("expected command after |").
+
+   4. A missing redirection target (e.g. "echo hi >") is a syntax error
+      ("expected filename after '>'").
+
+   5. This grammar intentionally omits: if/while/for, command substitution,
+      sub-shells, here-documents, and arithmetic expansion.  It covers the
+      subset required by the Session 7 assignment.
+   ------------------------------------------------------------------------- *)
